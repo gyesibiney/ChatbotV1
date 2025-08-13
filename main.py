@@ -1,49 +1,90 @@
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import sqlite3
-import os
+import time
+
+# Prometheus
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 app = FastAPI()
 
-# Static + templates setup
+# Serve static files (optional: for CSS/JS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 templates = Jinja2Templates(directory="templates")
 
-# DB Path
-DB_PATH = os.getenv("DB_PATH", "classicmodels.db")
+DB_PATH = "classicmodels.db"
 
-def get_db_connection():
+# ----- Prometheus Metrics -----
+REQUEST_COUNT = Counter(
+    "saleschat_requests_total",
+    "Total number of requests to the Sales Chatbot",
+    ["method", "endpoint"]
+)
+CHAT_MESSAGES = Counter(
+    "saleschat_chat_messages_total",
+    "Total number of chat messages processed"
+)
+REQUEST_LATENCY = Histogram(
+    "saleschat_request_latency_seconds",
+    "Latency of requests in seconds",
+    ["endpoint"]
+)
+
+
+def query_database(question: str):
+    """Basic DB query simulation."""
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    cursor = conn.cursor()
+    answer = ""
+
+    if "customers" in question.lower():
+        cursor.execute("SELECT customerName, country FROM customers LIMIT 5;")
+        rows = cursor.fetchall()
+        answer = "\n".join([f"{name} ({country})" for name, country in rows])
+
+    elif "products" in question.lower():
+        cursor.execute("SELECT productName, buyPrice FROM products LIMIT 5;")
+        rows = cursor.fetchall()
+        answer = "\n".join([f"{name} - ${price}" for name, price in rows])
+
+    else:
+        answer = "Sorry, I can't answer that yet. Try asking about 'customers' or 'products'."
+
+    conn.close()
+    return answer
+
 
 @app.get("/", response_class=HTMLResponse)
-async def get_chat_page(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def read_root(request: Request):
+    REQUEST_COUNT.labels(method="GET", endpoint="/").inc()
+    start_time = time.time()
 
-@app.post("/chat")
-async def chat(message: str = Form(...)):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    response = templates.TemplateResponse("index.html", {"request": request, "chat_history": []})
 
-        cursor.execute(
-            "SELECT productName, productLine, buyPrice FROM products WHERE productName LIKE ? LIMIT 5",
-            (f"%{message}%",)
-        )
-        products = cursor.fetchall()
+    REQUEST_LATENCY.labels(endpoint="/").observe(time.time() - start_time)
+    return response
 
-        if not products:
-            response = "Sorry, I couldn't find any matching products."
-        else:
-            response = "Here’s what I found:<br>"
-            for p in products:
-                response += f"- {p['productName']} ({p['productLine']}) — ${p['buyPrice']}<br>"
 
-        conn.close()
-        return JSONResponse({"reply": response})
+@app.post("/chat", response_class=HTMLResponse)
+async def chat(request: Request, message: str = Form(...)):
+    REQUEST_COUNT.labels(method="POST", endpoint="/chat").inc()
+    CHAT_MESSAGES.inc()
+    start_time = time.time()
 
-    except Exception as e:
-        return JSONResponse({"reply": f"Error: {str(e)}"})
+    answer = query_database(message)
+    response = templates.TemplateResponse(
+        "index.html",
+        {"request": request, "chat_history": [(message, answer)]}
+    )
+
+    REQUEST_LATENCY.labels(endpoint="/chat").observe(time.time() - start_time)
+    return response
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus scraping endpoint."""
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
