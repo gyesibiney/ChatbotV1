@@ -20,7 +20,17 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # ==== Simple UI Route ====
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
-    return """
+    example_questions = [
+        "List all Ford cars",
+        "Show customers from Germany",
+        "Get top 5 most expensive products",
+        "Find orders placed in 2005",
+        "Show sales reps and their territories"
+    ]
+
+    examples_html = "<ul>" + "".join(f"<li>{q}</li>" for q in example_questions) + "</ul>"
+
+    return f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -29,29 +39,31 @@ async def get_ui():
     </head>
     <body>
         <h1>Chat with the DB</h1>
+        <h3>💡 Example questions you can try:</h3>
+        {examples_html}
         <div id="chat-box" style="border:1px solid #ccc; padding:10px; height:300px; overflow-y:auto;"></div>
         <input id="user-input" type="text" placeholder="Type a message..." style="width:80%;">
         <button onclick="sendMessage()">Send</button>
 
         <script>
-        async function sendMessage() {
+        async function sendMessage() {{
             let message = document.getElementById("user-input").value;
             if (!message) return;
 
             let chatBox = document.getElementById("chat-box");
             chatBox.innerHTML += "<p><b>You:</b> " + message + "</p>";
 
-            let response = await fetch("/chat", {
+            let response = await fetch("/chat", {{
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: message })
-            });
+                headers: {{ "Content-Type": "application/json" }},
+                body: JSON.stringify({{ message: message }})
+            }});
 
             let data = await response.json();
             chatBox.innerHTML += "<p><b>Bot:</b> " + data.reply + "</p>";
             document.getElementById("user-input").value = "";
             chatBox.scrollTop = chatBox.scrollHeight;
-        }
+        }}
         </script>
     </body>
     </html>
