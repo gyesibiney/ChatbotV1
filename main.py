@@ -1,127 +1,98 @@
-from fastapi import FastAPI, Request, Form, HTTPException
+import sqlite3
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import os
-import mysql.connector
 import google.generativeai as genai
+import os
 
-# -----------------------
-# App setup
-# -----------------------
+# ----------------------
+# CONFIGURATION
+# ----------------------
+DB_PATH = "classicmodels.db"
+
+# Set your Gemini API key (must be in Hugging Face Secrets or .env)
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ----------------------
+# FASTAPI SETUP
+# ----------------------
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# -----------------------
-# Config
-# -----------------------
-API_KEY = os.getenv("API_KEY")  # Optional for API security
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME = os.getenv("DB_NAME", "classicmodels")
 
-# Gemini API key
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise RuntimeError("Please set GEMINI_API_KEY in your environment")
-
-genai.configure(api_key=GEMINI_API_KEY)
-llm_model = genai.GenerativeModel("gemini-1.5-flash")
-
-# -----------------------
-# Example questions
-# -----------------------
-EXAMPLE_QUESTIONS = [
-    "List the top 5 customers by total payments",
-    "Show the total sales by product line",
-    "Which employees report to Mary Patterson?",
-]
-
-# -----------------------
-# Chat memory
-# -----------------------
-chat_history = []
-
-# -----------------------
-# DB connection helper
-# -----------------------
-def run_sql_query(sql):
-    conn = mysql.connector.connect(
-        host=DB_HOST,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        database=DB_NAME
-    )
+def query_database(sql_query):
+    """Execute a SQL query and return results as list of dicts."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute(sql)
+    cursor.execute(sql_query)
     rows = cursor.fetchall()
     conn.close()
-    return rows
+    return [dict(row) for row in rows]
 
-# -----------------------
-# Process query with Gemini
-# -----------------------
-def process_query(user_input):
-    prompt = f"""
-You are a helpful assistant for the ClassicModels MySQL database.
 
-Schema:
-- Customers(customerNumber, customerName, contactLastName, contactFirstName, phone, addressLine1, addressLine2, city, state, postalCode, country, salesRepEmployeeNumber, creditLimit)
-- Orders(orderNumber, orderDate, requiredDate, shippedDate, status, comments, customerNumber)
-- OrderDetails(orderNumber, productCode, quantityOrdered, priceEach, orderLineNumber)
-- Products(productCode, productName, productLine, productScale, productVendor, productDescription, quantityInStock, buyPrice, MSRP)
-- Employees(employeeNumber, lastName, firstName, extension, email, officeCode, reportsTo, jobTitle)
-- Offices(officeCode, city, phone, addressLine1, addressLine2, state, country, postalCode, territory)
-- Payments(customerNumber, checkNumber, paymentDate, amount)
-- ProductLines(productLine, textDescription, htmlDescription, image)
+def ask_gemini(user_message):
+    """
+    Generate SQL query, fetch results from DB,
+    and pass both question + results to Gemini for reasoning.
+    """
+    # Step 1: Ask Gemini to create an SQL query for SQLite
+    sql_prompt = f"""
+You are a data assistant. The database schema is from 'classicmodels.db' which contains tables like:
+- customers
+- orders
+- orderdetails
+- products
+- employees
+- offices
+- payments
+- productlines
 
-User asked: {user_input}
+The user asked: "{user_message}"
 
-Return only the SQL query without explanation.
-"""
-    response = llm_model.generate_content(prompt)
-    sql_query = response.text.strip().strip("`")
+Write ONLY a valid SQL SELECT statement for SQLite to answer this question.
+Do not use code fences, explanations, or any text other than the SQL query.
+    """
+    sql_response = model.generate_content(sql_prompt)
+    sql_query = sql_response.text.strip()
+
+    # Step 2: Run SQL on our local database
     try:
-        rows = run_sql_query(sql_query)
+        db_results = query_database(sql_query)
     except Exception as e:
-        return f"Error executing query: {e}"
-    return f"SQL: {sql_query}\n\nResults: {rows}"
+        db_results = []
+        sql_query = f"ERROR: {e}"
 
-# -----------------------
-# Routes
-# -----------------------
+    # Step 3: Ask Gemini to answer conversationally using the DB results
+    final_prompt = f"""
+You are a friendly sales assistant for a car/motorcycle/vehicle parts store.
+User question: {user_message}
+SQL Query Used: {sql_query}
+Database Results: {db_results}
+
+Please answer in natural language, summarizing the information for the user.
+If no results, politely say we don't have that item.
+    """
+    final_response = model.generate_content(final_prompt)
+    return final_response.text.strip()
+
+
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request):
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "api_key_required": bool(API_KEY),
-        "example_questions": EXAMPLE_QUESTIONS,
-        "chat_history": chat_history
-    })
+async def get_chat(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request, "chat_history": []})
+
 
 @app.post("/chat", response_class=HTMLResponse)
 async def chat(request: Request, message: str = Form(...)):
-    if len(message) > 2000:
-        raise HTTPException(status_code=413, detail="Message too long")
+    reply = ask_gemini(message)
 
-    chat_history.append(("user", message))
-    try:
-        answer = process_query(message)
-    except Exception as e:
-        answer = f"Error: {str(e)}"
-
-    chat_history.append(("assistant", answer))
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "api_key_required": bool(API_KEY),
-        "example_questions": EXAMPLE_QUESTIONS,
-        "chat_history": chat_history
-    })
-
-@app.post("/query")
-async def query_api(message: str = Form(...), api_key: str = Form(None)):
-    if API_KEY and api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return {"response": process_query(message)}
+    # Keep chat history in session (for simplicity here, just return last exchange)
+    chat_history = [
+        {"sender": "You", "text": message},
+        {"sender": "Bot", "text": reply}
+    ]
+    return templates.TemplateResponse("index.html", {"request": request, "chat_history": chat_history})
