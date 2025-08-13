@@ -6,20 +6,17 @@ from fastapi.templating import Jinja2Templates
 import google.generativeai as genai
 import os
 
-# 1️⃣ Gemini API Key
+# Gemini API key
 os.environ["GOOGLE_API_KEY"] = "YOUR_GEMINI_API_KEY"
 genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
 
-# 2️⃣ FastAPI app
 app = FastAPI()
-
-# Static files & templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 DB_PATH = "classicmodels.db"
 
-# 3️⃣ Database query function
+# Run SQL
 def query_database(sql_query):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -31,21 +28,22 @@ def query_database(sql_query):
     except Exception as e:
         return f"[DB ERROR] {e}"
 
-# 4️⃣ Ask Gemini (SQL + answer)
+# Talk to Gemini
 def ask_gemini(user_message):
     try:
-        # --- Ask Gemini for SQL ---
+        model = genai.GenerativeModel("gemini-pro")
+
+        # Step 1: Get SQL from Gemini
         sql_prompt = f"""
         The database is classicmodels.db with tables:
         customers, orders, orderdetails, products, employees, offices, payments, productlines.
         User: "{user_message}"
         Write only a valid SQLite SELECT query to answer.
         """
-        model = genai.GenerativeModel("gemini-pro")
         sql_response = model.generate_content(sql_prompt)
         sql_query = sql_response.text.strip()
 
-        # 🛠 Remove markdown fences if present
+        # Cleanup markdown fences
         if sql_query.startswith("```"):
             parts = sql_query.split("```")
             if len(parts) >= 2:
@@ -55,10 +53,10 @@ def ask_gemini(user_message):
         print(f"[User]: {user_message}")
         print(f"[Gemini SQL Cleaned]: {sql_query}")
 
-        # --- Execute SQL ---
+        # Step 2: Execute SQL
         db_result = query_database(sql_query)
 
-        # --- Ask Gemini to summarize ---
+        # Step 3: Summarize answer
         answer_prompt = f"""
         The user asked: {user_message}
         The SQL query run was: {sql_query}
@@ -67,16 +65,18 @@ def ask_gemini(user_message):
         """
         answer_response = model.generate_content(answer_prompt)
 
+        # Prevent empty responses
+        answer_text = answer_response.text.strip() if answer_response and answer_response.text else "I couldn't find an answer."
+
         return {
             "sql": sql_query,
             "db_result": db_result,
-            "answer": answer_response.text.strip()
+            "answer": answer_text
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "answer": "An error occurred while processing your request."}
 
-# 5️⃣ Web routes
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "chat_history": []})
@@ -90,7 +90,6 @@ async def chat(request: Request, user_input: str = Form(...)):
     ]
     return templates.TemplateResponse("index.html", {"request": request, "chat_history": chat_history})
 
-# 6️⃣ Run locally
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)
