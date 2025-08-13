@@ -4,115 +4,122 @@ from fastapi.staticfiles import StaticFiles
 import sqlite3
 import google.generativeai as genai
 import os
-from datetime import datetime
-import re
+from dotenv import load_dotenv
 
-# ==== Gemini API Config ====
+load_dotenv()
+
+# === Configure Gemini API ===
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ==== FastAPI App ====
+# === Setup FastAPI ===
 app = FastAPI()
-
-# Mount static files for CSS/JS
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ==== Simple UI Route ====
+DB_PATH = "classicmodels.db"
+
+# ==== UI with examples ====
 @app.get("/", response_class=HTMLResponse)
 async def get_ui():
-    example_questions = [
-        "List all Ford cars",
-        "Show customers from Germany",
-        "Get top 5 most expensive products",
-        "Find orders placed in 2005",
-        "Show sales reps and their territories"
-    ]
-
-    examples_html = "<ul>" + "".join(f"<li>{q}</li>" for q in example_questions) + "</ul>"
-
-    return f"""
+    return """
     <!DOCTYPE html>
     <html>
     <head>
         <title>Gemini SQL Chatbot</title>
-        <link rel="stylesheet" href="/static/style.css">
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 20px; }
+            .examples button {
+                margin: 3px;
+                padding: 5px 10px;
+                background: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .examples button:hover {
+                background: #ddd;
+            }
+            #chat-box { border:1px solid #ccc; padding:10px; height:300px; overflow-y:auto; margin-top:15px; }
+            #user-input { width:80%; padding: 5px; }
+            button { padding: 5px 10px; }
+        </style>
     </head>
     <body>
-        <h1>Chat with the DB</h1>
-        <h3>💡 Example questions you can try:</h3>
-        {examples_html}
-        <div id="chat-box" style="border:1px solid #ccc; padding:10px; height:300px; overflow-y:auto;"></div>
-        <input id="user-input" type="text" placeholder="Type a message..." style="width:80%;">
+        <h1>Chat with Classic Models Database</h1>
+        <p>
+            This chatbot is connected to <b>classicmodels.db</b>, a sample business database 
+            containing data about cars, customers, employees, offices, orders, and payments. 
+            You can ask questions in plain English, and it will fetch real data from the database.
+        </p>
+
+        <h3>Example Questions:</h3>
+        <div class="examples">
+            <button onclick="sendExample('Show all Ford cars available')">Show all Ford cars available</button>
+            <button onclick="sendExample('List all employees and their job titles')">List all employees and their job titles</button>
+            <button onclick="sendExample('How many customers are in the USA?')">How many customers are in the USA?</button>
+            <button onclick="sendExample('List all orders placed in 2004')">List all orders placed in 2004</button>
+            <button onclick="sendExample('Show the total payments received from each customer')">Show the total payments received from each customer</button>
+        </div>
+
+        <div id="chat-box"></div>
+        <input id="user-input" type="text" placeholder="Type a message...">
         <button onclick="sendMessage()">Send</button>
 
         <script>
-        async function sendMessage() {{
+        async function sendExample(text) {
+            document.getElementById("user-input").value = text;
+            await sendMessage();
+        }
+
+        async function sendMessage() {
             let message = document.getElementById("user-input").value;
             if (!message) return;
 
             let chatBox = document.getElementById("chat-box");
             chatBox.innerHTML += "<p><b>You:</b> " + message + "</p>";
 
-            let response = await fetch("/chat", {{
+            let response = await fetch("/chat", {
                 method: "POST",
-                headers: {{ "Content-Type": "application/json" }},
-                body: JSON.stringify({{ message: message }})
-            }});
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: message })
+            });
 
             let data = await response.json();
             chatBox.innerHTML += "<p><b>Bot:</b> " + data.reply + "</p>";
             document.getElementById("user-input").value = "";
             chatBox.scrollTop = chatBox.scrollHeight;
-        }}
+        }
         </script>
     </body>
     </html>
     """
 
-# ==== Chat Endpoint ====
+# ==== Chat endpoint ====
 @app.post("/chat")
-async def chat(request: Request):
+async def chat_with_db(request: Request):
     try:
-        body = await request.json()
-        user_message = body.get("message", "").strip()
-        if not user_message:
-            return JSONResponse({"reply": "Please type something."})
+        data = await request.json()
+        user_message = data.get("message", "")
 
-        # Step 1: Ask Gemini to create SQL
+        # Ask Gemini to create an SQL query for the database
         prompt = f"""
-        You are an expert SQL assistant.
-        Generate a single SQL query for SQLite database that answers the question: "{user_message}".
-        Do not include explanations or markdown formatting.
+        You are a SQL assistant. The database schema is from classicmodels.db.
+        Tables include: customers, employees, offices, orders, orderdetails, payments, products, productlines.
+        User question: {user_message}
+        Return ONLY the SQL query without explanations.
         """
         gemini_response = model.generate_content(prompt)
         sql_query = gemini_response.text.strip()
 
-        # Remove markdown fences like ```sql
-        sql_query = re.sub(r"```(?:sql|sqlite)?", "", sql_query, flags=re.IGNORECASE).strip("` \n")
+        # Run the generated SQL
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(sql_query)
+        results = cursor.fetchall()
+        conn.close()
 
-        # Step 2: Run SQL query
-        db_reply = ""
-        try:
-            conn = sqlite3.connect("classicmodels.db")
-            cursor = conn.cursor()
-            cursor.execute(sql_query)
-            rows = cursor.fetchall()
-            db_reply = str(rows) if rows else "No results found."
-            conn.close()
-        except Exception as e:
-            db_reply = f"SQL error: {e}"
-
-        # Step 3: Final answer from Gemini using SQL result
-        final_prompt = f"User asked: {user_message}\nSQL result: {db_reply}\nAnswer in plain language."
-        final_answer = model.generate_content(final_prompt).text.strip()
-
-        return JSONResponse({"reply": final_answer})
+        return JSONResponse({"reply": str(results)})
 
     except Exception as e:
-        return JSONResponse({"reply": f"Sorry, something went wrong: {e}"})
+        return JSONResponse({"reply": f"Error: {str(e)}"})
 
-# ==== Run App ====
-if __name__ == "__main__":
-    import uvicorn
-    print(f"===== Application Startup at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} =====")
-    uvicorn.run(app, host="0.0.0.0", port=7860)
