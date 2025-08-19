@@ -1,101 +1,64 @@
-# Gemini SQL Chatbot - Classic Models
+# 🤖 Gemini SQL ChatBot – Classic Models Database
 
-This project is a **FastAPI-powered chatbot** that uses **Google's Gemini model** to translate natural language questions into SQL queries against the **Classic Models** sample database.  
+[![Hugging Face Spaces](https://img.shields.io/badge/🤗%20HuggingFace-Spaces-blue)](https://huggingface.co/spaces/gyesibiney/ChatBotV1)
 
-The chatbot provides a simple web interface where users can ask questions (e.g., *“Show all customers from Germany”*) and get results from the SQLite database in plain English.
+An interactive **FastAPI-powered chatbot** that connects **Google Gemini** with the **Classic Models database (SQLite)**.  
+Users can ask natural language questions, and the bot will:
+
+1. Convert the question into a valid **SQL query** (via Gemini).
+2. Execute the query on the `classicmodels.db` database.
+3. Return the results in **plain English**.
+
+Deployed on **Hugging Face Spaces** 🚀:  
+👉 [Live Demo](https://huggingface.co/spaces/gyesibiney/ChatBotV1)
 
 ---
 
-## 🚀 Features
-- Natural language → SQL query generation using **Gemini API**
-- Works with the **Classic Models** SQLite database
-- Lightweight **FastAPI backend**
-- Minimal **HTML/JS frontend** with interactive chat
-- Example queries to guide users
+## ✨ Features
+
+- 🔍 Ask natural language questions about customers, employees, products, orders, and payments.  
+- 🧠 Uses **Google Gemini (gemini-1.5-flash)** for SQL query generation and result summarization.  
+- 🗄️ Backed by the **Classic Models database** in SQLite.  
+- 🌐 Simple **FastAPI UI** with interactive chat.  
+- 📊 Pre-loaded example questions (e.g., *"Show all customers from Germany"*).  
 
 ---
 
-## 📂 Project Structure
+## 🛠️ Tech Stack
 
+- [FastAPI](https://fastapi.tiangolo.com/) – Backend & REST API  
+- [SQLite](https://www.sqlite.org/) – Classic Models database  
+- [Google Gemini API](https://ai.google.dev/) – Natural Language to SQL + Answer generation  
+- [Hugging Face Spaces](https://huggingface.co/spaces) – Deployment  
 
-DB_NAME = "classicmodels.db"  # Automatically persists between deploys
+---
 
-'''
+## 🚀 Getting Started (Local Development)
 
-📦 Files Included
-/Repository
-├── app.py               
-├── classicmodels.db     
-├── requirements.txt  
-├── templates/
-│   └── index.html
-└── static/
-    └── style.css
-└── README.md            
+### 1. Clone the repo
+```bash
+git clone https://huggingface.co/spaces/gyesibiney/ChatBotV1
+cd ChatBotV1
 
-🌟 Example Queries
--- These get translated from natural language:
-"Show all customers from Germany"
-"List all Ford products"
-"Find all orders placed in 2005"
-"Show total sales by each country"
-"List all product lines and their descriptions"
-   
-'''
+2. Create virtual environment & install dependencies
+python -m venv venv
+source venv/bin/activate   # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 
-2. Install Dependencies
-   pip install fastapi uvicorn google-generativeai fastapi uvicorn mysql-connector-python google-generativeai python-multipart jinja2
+3. Set up environment variable
+Add your Gemini API key to .env:
+GEMINI_API_KEY=your_api_key_here
 
-3. Setup Environment Variables
-Set your Gemini API Key:
+4. Run the app
+uvicorn app:app --host 0.0.0.0 --port 7860 --reload
 
-export GEMINI_API_KEY="your_api_key_here"
-
-
-
-⚠️ Notes
-Make sure your classicmodels.db schema matches the expected tables:
-
-customers
-
-employees
-
-offices
-
-orders
-
-orderdetails
-
-payments
-
-products
-
-productlines
-
-The Gemini model sometimes generates invalid SQL — errors are caught and displayed in chat.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+📂 Repository Structure
+ChatBotV1/
+│── app.py              # FastAPI main app
+│── classicmodels.db    # SQLite database
+│── static/             # CSS/JS for UI
+│── requirements.txt    # Dependencies
+│── README.md           # Project docs
 
 
 
