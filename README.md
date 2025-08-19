@@ -24,7 +24,7 @@ The chatbot provides a simple web interface where users can ask questions (e.g.,
 │   └── index.html
 └── static/
     └── style.css "
-
+---
 
 2. Install Dependencies
    pip install fastapi uvicorn google-generativeai fastapi uvicorn mysql-connector-python google-generativeai python-multipart jinja2
