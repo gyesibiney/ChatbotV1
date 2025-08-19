@@ -17,14 +17,29 @@ The chatbot provides a simple web interface where users can ask questions (e.g.,
 
 ## 📂 Project Structure
 
-├── main.py
-├── classicmodels.db   # your database file
-├── requirements.txt
+
+DB_NAME = "classicmodels.db"  # Automatically persists between deploys
+
+📦 Files Included
+/Repository
+├── app.py               
+├── classicmodels.db     
+├── requirements.txt  
 ├── templates/
 │   └── index.html
 └── static/
-    └── style.css "
----
+    └── style.css
+└── README.md            
+
+🌟 Example Queries
+-- These get translated from natural language:
+"Show all customers from Germany"
+"List all Ford products"
+"Find all orders placed in 2005"
+"Show total sales by each country"
+"List all product lines and their descriptions"
+   
+
 
 2. Install Dependencies
    pip install fastapi uvicorn google-generativeai fastapi uvicorn mysql-connector-python google-generativeai python-multipart jinja2
@@ -34,18 +49,7 @@ Set your Gemini API Key:
 
 export GEMINI_API_KEY="your_api_key_here"
 
-💡 Example Queries
-You can try:
 
-Show all customers from Germany
-
-List all Ford products
-
-Find all orders placed in 2005
-
-Show total sales by each country
-
-List all product lines and their descriptions
 
 ⚠️ Notes
 Make sure your classicmodels.db schema matches the expected tables:
