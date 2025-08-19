@@ -29,8 +29,8 @@ async def get_ui():
         "List payments made by 'Atelier graphique'",
         "Find orders with status 'Shipped' in March 2004",
         "Show total sales by each country",
-        "List all product lines and their descriptions",
-        "Find employees who report to 'Andrew Fixter'"
+        "List all product lines and their descriptions"
+        
     ]
 
     examples_html = "".join(
