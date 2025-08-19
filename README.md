@@ -16,13 +16,14 @@ The chatbot provides a simple web interface where users can ask questions (e.g.,
 ---
 
 ## 📂 Project Structure
+"
 ├── main.py
 ├── classicmodels.db   # your database file
 ├── requirements.txt
 ├── templates/
 │   └── index.html
 └── static/
-    └── style.css
+    └── style.css "
 
 
 2. Install Dependencies
