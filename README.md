@@ -20,6 +20,8 @@ The chatbot provides a simple web interface where users can ask questions (e.g.,
 
 DB_NAME = "classicmodels.db"  # Automatically persists between deploys
 
+'''
+
 📦 Files Included
 /Repository
 ├── app.py               
@@ -39,7 +41,7 @@ DB_NAME = "classicmodels.db"  # Automatically persists between deploys
 "Show total sales by each country"
 "List all product lines and their descriptions"
    
-
+'''
 
 2. Install Dependencies
    pip install fastapi uvicorn google-generativeai fastapi uvicorn mysql-connector-python google-generativeai python-multipart jinja2
